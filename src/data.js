@@ -1,8 +1,29 @@
-// Pure fake-data generation for the "J2 Analytics" simulated business.
-// No Cloudflare-specific APIs here except crypto.randomUUID, which is a
-// standard Web Crypto API available in Workers, modern browsers, AND
-// Node.js (18.17+ globally, no import needed) -- so this file can be
-// unit-tested with plain `node test/data.test.js`, no wrangler required.
+// Fake-data generation for the simulated business. All business-specific
+// facts (name, product catalog, customer archetypes) live in
+// business-config.js -- this file is just the generic machinery that turns
+// that config into realistic lead/order events. Swap business-config.js to
+// reskin the whole generator for a different business.
+//
+// No Cloudflare-specific APIs here except crypto.randomUUID, which is
+// standard Web Crypto -- available in Workers AND in Node.js (18.17+,
+// global, no import needed) -- so this file is unit-testable with plain
+// `node test/data.test.js`, no wrangler required.
+
+import {
+  BUSINESS_NAME,
+  CATEGORIES,
+  PRODUCTS,
+  CONSUMER_ROLES,
+  CONSUMER_BUDGET_BANDS,
+  CONSUMER_LEAD_MESSAGES,
+  ORG_TYPES,
+  TITLES,
+  BUSINESS_BUDGET_BANDS,
+  BUSINESS_LEAD_MESSAGES,
+  SOURCES,
+  SHIP_LOCATIONS,
+  randomOrgName,
+} from "./business-config.js";
 
 export const FIRST_NAMES = [
   "Olivia", "Liam", "Emma", "Noah", "Ava", "Elijah", "Sophia", "James",
@@ -22,66 +43,23 @@ export const LAST_NAMES = [
   "Okafor", "Kowalski", "Haddad", "Larsen", "Rossi", "Dubois",
 ];
 
-export const COMPANY_PREFIXES = [
-  "Bright Path", "Northwind", "Vertex", "Summit", "Clearwater", "Ironclad",
-  "Bluepeak", "Cascade", "Redstone", "Silverline", "Evergreen", "Foundry",
-  "Lighthouse", "Anchor", "Meridian", "Outpost", "Harbor", "Granite",
-  "Windward", "Junction", "Beacon", "Cobalt", "Pinnacle", "Tidewater",
-  "Sequoia", "Waypoint", "Ember", "Fieldstone", "Highline", "Northgate",
-];
-
-export const COMPANY_SUFFIXES = [
-  "Analytics", "Systems", "Labs", "Group", "Partners", "Solutions",
-  "Ventures", "Collective", "Works", "Technologies", "Logistics",
-  "Digital", "Studio", "Industries", "Networks",
-];
-
-export const INDUSTRIES = [
-  "SaaS", "E-commerce", "Healthcare", "Logistics", "Fintech", "EdTech",
-  "Manufacturing", "Marketing Agency", "Real Estate", "Nonprofit",
-];
-
-export const EMPLOYEE_BANDS = ["1-10", "11-50", "51-200", "201-500", "500+"];
-
-export const SOURCES = [
-  "Google Ads", "LinkedIn Ads", "Organic Search", "Referral", "Webinar",
-  "Content Download", "Cold Outreach", "Product Hunt", "Partner Program",
-];
-
 // NANPA reserves the 555-0100 through 555-0199 range for fictional use
 // (film, TV, testing) -- combined with a real area code this guarantees
 // the generated numbers can never collide with an in-service line.
-const AREA_CODES = [
-  "212", "310", "415", "512", "617", "702", "206", "303", "404", "602",
-];
+const AREA_CODES = ["212", "310", "415", "512", "617", "702", "206", "303", "404", "602"];
 
-export const PLANS = [
-  { id: "starter", name: "Starter", price_monthly: 29, price_annual: 290 },
-  { id: "growth", name: "Growth", price_monthly: 99, price_annual: 990 },
-  { id: "scale", name: "Scale", price_monthly: 299, price_annual: 2990 },
-];
-
-export const ADDONS = [
-  { id: "extra_seats", name: "Extra Seats (5-pack)", price: 49 },
-  { id: "priority_support", name: "Priority Support", price: 79 },
-  { id: "custom_dashboards", name: "Custom Dashboard Build", price: 199 },
-];
-
-export const LEAD_MESSAGES = [
-  "Looking to consolidate our reporting into one dashboard.",
-  "Evaluating analytics tools ahead of next quarter's rollout.",
-  "Referred by a colleague, interested in a demo.",
-  "Downloaded the benchmarking whitepaper and want to learn more.",
-  "Comparing J2 Analytics against our current BI tool.",
-  "Need better real-time visibility into product usage.",
-  "Our current dashboard can't keep up with our data volume.",
-  "Exploring options after a webinar on funnel analytics.",
-  "Free trial ended and the team wants to talk pricing.",
-  "Board asked for better reporting before the next review.",
-];
+const CONSUMER_LEAD_RATE = 0.55; // share of leads that are individual consumers vs. businesses
+const LEAD_TICK_RATE = 0.55; // chance any given tick emits a lead
+const ORDER_TICK_RATE = 0.35; // chance any given tick emits an order
+const ORDER_FROM_LEAD_RATE = 0.7; // of orders, share that convert an existing lead vs. a fresh direct order
+const CROSSOVER_PRODUCT_RATE = 0.12; // chance an order includes a product outside its usual tier
 
 function pick(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function randInt(min, max) {
+  return min + Math.floor(Math.random() * (max - min + 1));
 }
 
 function slugify(str) {
@@ -94,10 +72,6 @@ function randomPhone() {
   return `(${area}) 555-01${line}`;
 }
 
-export function randomCompanyName() {
-  return `${pick(COMPANY_PREFIXES)} ${pick(COMPANY_SUFFIXES)}`;
-}
-
 // All generated emails resolve under the .example TLD, which RFC 2606
 // reserves specifically for documentation/testing so it can never be a
 // real, deliverable inbox -- important since this data flows into real
@@ -106,82 +80,197 @@ function emailFor(first, last, domain) {
   return `${first.toLowerCase()}.${last.toLowerCase()}@${domain}`;
 }
 
-export function generateLead() {
-  const first = pick(FIRST_NAMES);
-  const last = pick(LAST_NAMES);
-  const company = randomCompanyName();
-  const domain = `${slugify(company)}.example`;
-  const interestPlan = Math.random() < 0.15 ? null : pick(PLANS).id;
+function domainFor(name) {
+  return `${slugify(name)}.example`;
+}
 
+function randomPerson() {
+  return { first: pick(FIRST_NAMES), last: pick(LAST_NAMES) };
+}
+
+export function generateLead() {
+  const isConsumer = Math.random() < CONSUMER_LEAD_RATE;
+  const { first, last } = randomPerson();
+  const timestamp = new Date().toISOString();
+  const id = `lead_${crypto.randomUUID()}`;
+
+  if (isConsumer) {
+    const domain = domainFor(`${first}${last}`);
+    return {
+      event: "lead.created",
+      id,
+      timestamp,
+      customer_type: "consumer",
+      contact: {
+        first_name: first,
+        last_name: last,
+        email: emailFor(first, last, domain),
+        phone: randomPhone(),
+        title: null,
+      },
+      organization: null,
+      role: pick(CONSUMER_ROLES),
+      source: pick(SOURCES),
+      interest_category: pick(CATEGORIES),
+      budget_band: pick(CONSUMER_BUDGET_BANDS),
+      message: pick(CONSUMER_LEAD_MESSAGES),
+      status: "new",
+    };
+  }
+
+  const orgType = pick(ORG_TYPES);
+  const orgName = randomOrgName(orgType, pick);
+  const domain = domainFor(orgName);
   return {
     event: "lead.created",
-    id: `lead_${crypto.randomUUID()}`,
-    timestamp: new Date().toISOString(),
+    id,
+    timestamp,
+    customer_type: "business",
     contact: {
       first_name: first,
       last_name: last,
       email: emailFor(first, last, domain),
       phone: randomPhone(),
+      title: pick(TITLES),
     },
-    company: {
-      name: company,
-      domain,
-      industry: pick(INDUSTRIES),
-      employee_band: pick(EMPLOYEE_BANDS),
-    },
+    organization: { name: orgName, type: orgType },
+    role: null,
     source: pick(SOURCES),
-    interest_plan: interestPlan,
-    message: pick(LEAD_MESSAGES),
+    interest_category: pick(CATEGORIES),
+    budget_band: pick(BUSINESS_BUDGET_BANDS),
+    message: pick(BUSINESS_LEAD_MESSAGES),
     status: "new",
   };
 }
 
-function generateDirectCustomer() {
-  const first = pick(FIRST_NAMES);
-  const last = pick(LAST_NAMES);
-  const company = randomCompanyName();
-  const domain = `${slugify(company)}.example`;
+function pickItemsForOrder(customerType) {
+  const primaryPool = PRODUCTS.filter((p) => p.tier === customerType || p.tier === "both");
+  const crossoverPool = PRODUCTS.filter((p) => p.tier !== customerType && p.tier !== "both");
+  const itemCount = customerType === "consumer" ? randInt(1, 3) : randInt(3, 7);
+
+  const items = [];
+  const used = new Set();
+
+  for (let i = 0; i < itemCount; i++) {
+    const useCrossover = Math.random() < CROSSOVER_PRODUCT_RATE && crossoverPool.length > 0;
+    const product = pick(useCrossover ? crossoverPool : primaryPool);
+    if (used.has(product.sku)) continue;
+    used.add(product.sku);
+
+    let qty;
+    if (customerType === "business") {
+      qty = product.price > 500 ? randInt(1, 3) : randInt(2, 8);
+    } else {
+      qty = product.price < 50 ? randInt(1, 3) : 1;
+    }
+
+    items.push({
+      sku: product.sku,
+      brand: product.brand,
+      name: product.name,
+      category: product.category,
+      unit_price: product.price,
+      qty,
+      line_total: Number((product.price * qty).toFixed(2)),
+    });
+  }
+
+  // Guarantee at least one item even if every draw collided.
+  if (items.length === 0) {
+    const product = pick(primaryPool);
+    items.push({
+      sku: product.sku,
+      brand: product.brand,
+      name: product.name,
+      category: product.category,
+      unit_price: product.price,
+      qty: 1,
+      line_total: product.price,
+    });
+  }
+
+  return items;
+}
+
+function generateDirectCustomer(customerType) {
+  const { first, last } = randomPerson();
+  if (customerType === "consumer") {
+    const domain = domainFor(`${first}${last}`);
+    return {
+      first_name: first,
+      last_name: last,
+      email: emailFor(first, last, domain),
+      organization_name: null,
+    };
+  }
+  const orgType = pick(ORG_TYPES);
+  const orgName = randomOrgName(orgType, pick);
+  const domain = domainFor(orgName);
   return {
     first_name: first,
     last_name: last,
     email: emailFor(first, last, domain),
-    company_name: company,
+    organization_name: orgName,
   };
 }
 
-// If `lead` is provided, the order is that lead's conversion (same person,
-// same company). If omitted, it's a "direct" self-serve order with no
-// prior lead record -- useful for demoing flows that don't assume a CRM
-// match already exists.
+// If `lead` is provided, the order is that lead's conversion (same person /
+// organization). If omitted, it's a "direct" order with no prior lead
+// record -- useful for demoing flows that don't assume a CRM match exists.
 export function generateOrder(lead = null) {
-  const plan = lead?.interest_plan
-    ? PLANS.find((p) => p.id === lead.interest_plan) ?? pick(PLANS)
-    : pick(PLANS);
-
-  const billingCycle = Math.random() < 0.3 ? "annual" : "monthly";
-  const planPrice = billingCycle === "annual" ? plan.price_annual : plan.price_monthly;
-  const addons = ADDONS.filter(() => Math.random() < 0.25);
-  const addonsTotal = addons.reduce((sum, a) => sum + a.price, 0);
+  const customerType = lead ? lead.customer_type : Math.random() < CONSUMER_LEAD_RATE ? "consumer" : "business";
 
   const customer = lead
     ? {
         first_name: lead.contact.first_name,
         last_name: lead.contact.last_name,
         email: lead.contact.email,
-        company_name: lead.company.name,
+        organization_name: lead.organization ? lead.organization.name : null,
       }
-    : generateDirectCustomer();
+    : generateDirectCustomer(customerType);
+
+  const items = pickItemsForOrder(customerType);
+  const subtotal = Number(items.reduce((s, it) => s + it.line_total, 0).toFixed(2));
+
+  const shippingCost =
+    customerType === "consumer" ? (subtotal > 150 ? 0 : 19.99) : subtotal > 1000 ? 0 : 89;
+
+  // Flat example rate for demo purposes -- swap for your actual jurisdiction's rate.
+  const tax = Number((subtotal * 0.0725).toFixed(2));
+  const amountTotal = Number((subtotal + shippingCost + tax).toFixed(2));
+
+  const isNet30 = customerType === "business" && Math.random() < 0.4;
+  const paymentTerms = isNet30 ? "net_30" : "card";
+  const poNumber = isNet30 ? `PO-${randInt(10000, 99999)}` : null;
+
+  const shipTo = pick(SHIP_LOCATIONS);
 
   return {
     event: "order.created",
     id: `order_${crypto.randomUUID()}`,
     timestamp: new Date().toISOString(),
     lead_id: lead ? lead.id : null,
+    customer_type: customerType,
     customer,
-    plan: { id: plan.id, name: plan.name, billing_cycle: billingCycle, price: planPrice },
-    addons: addons.map((a) => ({ id: a.id, name: a.name, price: a.price })),
-    amount_total: Number((planPrice + addonsTotal).toFixed(2)),
+    shipping: { city: shipTo.city, state: shipTo.state },
+    items,
+    item_count: items.reduce((s, it) => s + it.qty, 0),
+    subtotal,
+    shipping_cost: shippingCost,
+    tax,
+    amount_total: amountTotal,
     currency: "USD",
-    status: "paid",
+    payment_terms: paymentTerms,
+    po_number: poNumber,
+    status: isNet30 ? "invoiced" : "paid",
   };
 }
+
+export {
+  BUSINESS_NAME,
+  CATEGORIES,
+  PRODUCTS,
+  LEAD_TICK_RATE,
+  ORDER_TICK_RATE,
+  ORDER_FROM_LEAD_RATE,
+};

@@ -1,4 +1,11 @@
-import { generateLead, generateOrder } from "./data.js";
+import {
+  generateLead,
+  generateOrder,
+  BUSINESS_NAME,
+  LEAD_TICK_RATE,
+  ORDER_TICK_RATE,
+  ORDER_FROM_LEAD_RATE,
+} from "./data.js";
 import {
   saveLead,
   saveOrder,
@@ -34,15 +41,15 @@ async function dispatchWebhooks(env, evt) {
 export async function runTick(env) {
   const events = [];
 
-  if (Math.random() < 0.55) {
+  if (Math.random() < LEAD_TICK_RATE) {
     const lead = generateLead();
     await saveLead(env.DB, lead);
     events.push(lead);
   }
 
-  if (Math.random() < 0.35) {
+  if (Math.random() < ORDER_TICK_RATE) {
     let sourceLead = null;
-    if (Math.random() < 0.7) {
+    if (Math.random() < ORDER_FROM_LEAD_RATE) {
       sourceLead = await pickUnconvertedLead(env.DB);
     }
     const order = generateOrder(sourceLead);
@@ -79,7 +86,7 @@ async function handleDashboard(env) {
     recentOrders(env.DB, 20),
   ]);
   const html = renderDashboard({
-    businessName: env.BUSINESS_NAME || "J2 Analytics",
+    businessName: env.BUSINESS_NAME || BUSINESS_NAME,
     stats,
     leads,
     orders,

@@ -4,6 +4,11 @@ function esc(str) {
   ));
 }
 
+function whoLead(l) {
+  if (l.organization_name) return `${esc(l.first_name)} ${esc(l.last_name)} @ ${esc(l.organization_name)}`;
+  return `${esc(l.first_name)} ${esc(l.last_name)}`;
+}
+
 export function renderDashboard({ businessName, stats, leads, orders, cronSchedule }) {
   const conversionRate = stats.leads > 0 ? ((stats.converted / stats.leads) * 100).toFixed(1) : "0.0";
 
@@ -11,8 +16,9 @@ export function renderDashboard({ businessName, stats, leads, orders, cronSchedu
     .map(
       (l) => `<tr>
         <td>${esc(l.created_at)}</td>
-        <td>${esc(l.first_name)} ${esc(l.last_name)}</td>
-        <td>${esc(l.company_name)}</td>
+        <td>${l.customer_type === "business" ? "business" : "consumer"}</td>
+        <td>${whoLead(l)}</td>
+        <td>${esc(l.organization_type || "-")}</td>
         <td>${esc(l.source)}</td>
         <td>${l.converted ? "converted" : "new"}</td>
       </tr>`
@@ -23,9 +29,11 @@ export function renderDashboard({ businessName, stats, leads, orders, cronSchedu
     .map(
       (o) => `<tr>
         <td>${esc(o.created_at)}</td>
-        <td>${esc(o.plan_id)}</td>
-        <td>${esc(o.billing_cycle)}</td>
+        <td>${o.customer_type === "business" ? "business" : "consumer"}</td>
+        <td>${o.item_count}</td>
         <td>$${esc(o.amount_total)}</td>
+        <td>${esc(o.payment_terms)}</td>
+        <td>${esc(o.status)}</td>
         <td>${o.lead_id ? "from lead" : "direct"}</td>
       </tr>`
     )
@@ -39,7 +47,7 @@ export function renderDashboard({ businessName, stats, leads, orders, cronSchedu
 <title>${esc(businessName)} -- Data Faucet</title>
 <style>
   :root { color-scheme: light dark; }
-  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 960px; margin: 40px auto; padding: 0 20px; line-height: 1.5; }
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 1040px; margin: 40px auto; padding: 0 20px; line-height: 1.5; }
   h1 { margin-bottom: 4px; }
   .sub { color: #6b7280; margin-top: 0; }
   .stats { display: flex; gap: 16px; margin: 24px 0; flex-wrap: wrap; }
@@ -65,14 +73,14 @@ export function renderDashboard({ businessName, stats, leads, orders, cronSchedu
 
   <h2>Recent leads</h2>
   <table>
-    <thead><tr><th>Time</th><th>Contact</th><th>Company</th><th>Source</th><th>Status</th></tr></thead>
-    <tbody>${leadRows || `<tr><td colspan="5">No leads yet -- wait for the next cron tick or hit /fire.</td></tr>`}</tbody>
+    <thead><tr><th>Time</th><th>Type</th><th>Contact</th><th>Org type</th><th>Source</th><th>Status</th></tr></thead>
+    <tbody>${leadRows || `<tr><td colspan="6">No leads yet -- wait for the next cron tick or hit /fire.</td></tr>`}</tbody>
   </table>
 
   <h2>Recent orders</h2>
   <table>
-    <thead><tr><th>Time</th><th>Plan</th><th>Billing</th><th>Amount</th><th>Origin</th></tr></thead>
-    <tbody>${orderRows || `<tr><td colspan="5">No orders yet -- wait for the next cron tick or hit /fire.</td></tr>`}</tbody>
+    <thead><tr><th>Time</th><th>Type</th><th>Items</th><th>Total</th><th>Terms</th><th>Status</th><th>Origin</th></tr></thead>
+    <tbody>${orderRows || `<tr><td colspan="7">No orders yet -- wait for the next cron tick or hit /fire.</td></tr>`}</tbody>
   </table>
 </body>
 </html>`;

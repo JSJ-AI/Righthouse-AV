@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "j2analytics-data-faucet",
+  "name": "righouse-data-faucet",
   "main": "src/index.js",
   "compatibility_date": "2024-09-23",
 
@@ -15,13 +15,13 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "j2analytics-faucet",
+      "database_name": "righouse-faucet",
       "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID"
     }
   ],
 
   "vars": {
-    "BUSINESS_NAME": "J2 Analytics"
+    "BUSINESS_NAME": "RigHouse AV & Lighting"
   }
 
   // Once deployed, either:

@@ -5,18 +5,20 @@
 export async function saveLead(db, lead) {
   await db
     .prepare(
-      `INSERT INTO leads (id, created_at, first_name, last_name, email, company_name, source, interest_plan, converted)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`
+      `INSERT INTO leads (id, created_at, customer_type, first_name, last_name, email, organization_name, organization_type, source, interest_category, converted)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
     )
     .bind(
       lead.id,
       lead.timestamp,
+      lead.customer_type,
       lead.contact.first_name,
       lead.contact.last_name,
       lead.contact.email,
-      lead.company.name,
+      lead.organization ? lead.organization.name : null,
+      lead.organization ? lead.organization.type : null,
       lead.source,
-      lead.interest_plan
+      lead.interest_category
     )
     .run();
 }
@@ -24,16 +26,19 @@ export async function saveLead(db, lead) {
 export async function saveOrder(db, order) {
   await db
     .prepare(
-      `INSERT INTO orders (id, created_at, lead_id, plan_id, billing_cycle, amount_total)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO orders (id, created_at, lead_id, customer_type, item_count, subtotal, amount_total, payment_terms, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .bind(
       order.id,
       order.timestamp,
       order.lead_id,
-      order.plan.id,
-      order.plan.billing_cycle,
-      order.amount_total
+      order.customer_type,
+      order.item_count,
+      order.subtotal,
+      order.amount_total,
+      order.payment_terms,
+      order.status
     )
     .run();
 }
@@ -48,13 +53,15 @@ export async function pickUnconvertedLead(db) {
   // closely enough for generateOrder() to consume.
   return {
     id: row.id,
+    customer_type: row.customer_type,
     contact: {
       first_name: row.first_name,
       last_name: row.last_name,
       email: row.email,
     },
-    company: { name: row.company_name },
-    interest_plan: row.interest_plan,
+    organization: row.organization_name
+      ? { name: row.organization_name, type: row.organization_type }
+      : null,
   };
 }
 
