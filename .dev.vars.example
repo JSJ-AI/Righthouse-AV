@@ -5,3 +5,8 @@
 MAKE_WEBHOOK_URL=https://hook.us1.make.com/your-make-webhook-id
 ZAPIER_WEBHOOK_URL=https://hooks.zapier.com/hooks/catch/your-zapier-hook-id
 WEBHOOK_SHARED_SECRET=choose-a-random-string
+
+# Only set this if you're mounting the Worker at a path prefix on an
+# existing site via a Cloudflare Route (e.g. j2analytics.ai/av) instead of
+# a dedicated subdomain. Leave unset/commented for a subdomain deployment.
+# BASE_PATH=/av

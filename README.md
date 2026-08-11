@@ -154,10 +154,39 @@ Wrangler will print your live URL, something like
 
 ### Put it on your own domain (optional)
 
-Since `j2analytics.ai` is on Cloudflare, the cleanest option is:
+`j2analytics.ai` is already on Cloudflare, so you have two options. Deploy
+to the default `workers.dev` URL first (above) and sanity-check `/health`
+and `/` there before attaching either of these -- easier to debug on a
+throwaway URL than on your real domain.
+
+**Option A -- a dedicated subdomain (Custom Domain).** The Worker owns the
+whole subdomain; Cloudflare creates the DNS record and cert for you.
 Cloudflare Dashboard -> Workers & Pages -> `righouse-data-faucet` ->
-Settings -> Domains & Routes -> **Add Custom Domain** -> e.g.
-`events.j2analytics.ai`. No config file changes needed.
+Settings -> Domains & Routes -> **Add Custom Domain** -> e.g. a
+non-guessable subdomain of your choosing. No config file changes needed.
+This Worker's own `/robots.txt` route covers the whole subdomain, so
+crawlers are blocked automatically.
+
+**Option B -- a path on your existing site (Route), e.g.
+`j2analytics.ai/av`.** Doesn't touch DNS at all; everything else on
+`j2analytics.ai` keeps being served by whatever hosts it today, and only
+requests under that one path go to this Worker. Set `BASE_PATH` to match
+(no trailing slash) either in `wrangler.jsonc`'s `vars` or as
+`npx wrangler secret put BASE_PATH` (value `/av`), redeploy, then add a
+Route in the dashboard: Workers & Pages -> `righouse-data-faucet` ->
+Settings -> Domains & Routes -> **Add Route** -> pattern `j2analytics.ai/av*`,
+zone `j2analytics.ai`. Caveat: this Worker's `/robots.txt` route only
+answers at `j2analytics.ai/av/robots.txt`, which crawlers never check --
+real crawlers only read `j2analytics.ai/robots.txt` (the site root), so add
+a `Disallow: /av` line there yourself, wherever your main site's actual
+robots.txt is managed.
+
+Either way, this stays a *blind* page, not an access-controlled one:
+nothing here stops someone with the exact URL from opening the dashboard.
+That's intentional per your call above -- if you want real access control
+later, put the subdomain/route behind a Cloudflare Access policy (no code
+changes needed), or ask me to gate every route behind
+`WEBHOOK_SHARED_SECRET` the way `/fire` already is.
 
 ### Endpoints once deployed
 

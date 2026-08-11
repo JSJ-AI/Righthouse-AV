@@ -95,6 +95,14 @@ async function handleDashboard(env) {
   return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
 }
 
+// "Blind page" posture: this is an unlisted demo page, not an
+// access-controlled one. Nothing here stops someone who has the exact URL
+// from viewing the dashboard -- these headers just keep it out of search
+// engines and crawlers so it doesn't surface on its own. Real access
+// control (if you ever want it) is a Cloudflare Access policy in front of
+// the custom domain, or gating every route behind WEBHOOK_SHARED_SECRET.
+const NOINDEX_HEADERS = { "x-robots-tag": "noindex, nofollow, noarchive" };
+
 export default {
   async scheduled(controller, env, ctx) {
     ctx.waitUntil(runTick(env));
@@ -103,33 +111,63 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    if (url.pathname === "/health") {
-      return new Response(JSON.stringify({ ok: true, time: new Date().toISOString() }), {
-        headers: { "content-type": "application/json" },
+    // Lets this Worker be mounted either at a domain/subdomain root (Cloudflare
+    // "Custom Domain", e.g. av.j2analytics.ai) or under a path prefix on an
+    // existing site via a Cloudflare "Route" (e.g. j2analytics.ai/av*). Set
+    // BASE_PATH (no trailing slash, e.g. "/av") only for the path-prefix case;
+    // leave it unset for a dedicated subdomain.
+    const basePath = (env.BASE_PATH || "").replace(/\/+$/, "");
+    let pathname = url.pathname;
+    if (basePath) {
+      if (pathname === basePath) pathname = "/";
+      else if (pathname.startsWith(`${basePath}/`)) pathname = pathname.slice(basePath.length);
+      else return new Response("Not found", { status: 404, headers: NOINDEX_HEADERS });
+    }
+
+    if (pathname === "/robots.txt") {
+      // Note: this only matters if the Worker owns the domain root (the
+      // subdomain/Custom Domain setup). If mounted under a path prefix via a
+      // Route, real crawlers only ever check the *site's* root robots.txt,
+      // which lives outside this Worker -- add "Disallow: /av" (or whatever
+      // BASE_PATH is) there instead. See README.
+      return new Response("User-agent: *\nDisallow: /\n", {
+        headers: { "content-type": "text/plain", ...NOINDEX_HEADERS },
       });
     }
 
-    if (url.pathname === "/fire") {
+    if (pathname === "/health") {
+      return new Response(JSON.stringify({ ok: true, time: new Date().toISOString() }), {
+        headers: { "content-type": "application/json", ...NOINDEX_HEADERS },
+      });
+    }
+
+    if (pathname === "/fire") {
       // Optional lightweight protection: if WEBHOOK_SHARED_SECRET is set,
       // require it as ?key=... so this endpoint can't be spammed by anyone
       // who finds the URL.
       if (env.WEBHOOK_SHARED_SECRET && url.searchParams.get("key") !== env.WEBHOOK_SHARED_SECRET) {
         return new Response(JSON.stringify({ error: "unauthorized" }), {
           status: 401,
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", ...NOINDEX_HEADERS },
         });
       }
-      return handleFire(env);
+      const res = await handleFire(env);
+      Object.entries(NOINDEX_HEADERS).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
     }
 
-    if (url.pathname === "/recent") {
-      return handleRecent(env);
+    if (pathname === "/recent") {
+      const res = await handleRecent(env);
+      Object.entries(NOINDEX_HEADERS).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
     }
 
-    if (url.pathname === "/") {
-      return handleDashboard(env);
+    if (pathname === "/") {
+      const res = await handleDashboard(env);
+      Object.entries(NOINDEX_HEADERS).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
     }
 
-    return new Response("Not found", { status: 404 });
+    return new Response("Not found", { status: 404, headers: NOINDEX_HEADERS });
   },
 };
