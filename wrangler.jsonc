@@ -1,0 +1,35 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "j2analytics-data-faucet",
+  "main": "src/index.js",
+  "compatibility_date": "2024-09-23",
+
+  // Fires the generator on a schedule, forever, independent of any browser
+  // tab or session. */3 * * * * = every 3 minutes. Change freely.
+  "triggers": {
+    "crons": ["*/3 * * * *"]
+  },
+
+  // Internal state store: tracks which leads have already "converted" to an
+  // order so the funnel logic doesn't double-convert the same lead.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "j2analytics-faucet",
+      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+    }
+  ],
+
+  "vars": {
+    "BUSINESS_NAME": "J2 Analytics"
+  }
+
+  // Once deployed, either:
+  //   a) use Cloudflare Dashboard -> Workers & Pages -> your worker ->
+  //      Settings -> Domains & Routes -> Add Custom Domain (e.g.
+  //      events.j2analytics.ai) -- easiest, no config needed here, or
+  //   b) uncomment and fill in a routes block:
+  // "routes": [
+  //   { "pattern": "events.j2analytics.ai/*", "zone_name": "j2analytics.ai" }
+  // ]
+}

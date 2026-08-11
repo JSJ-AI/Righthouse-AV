@@ -1,0 +1,7 @@
+# Copy this file to `.dev.vars` for local `wrangler dev` testing.
+# `.dev.vars` is gitignored -- never commit real webhook URLs or secrets.
+# In production these are set via `wrangler secret put ...` instead (see README).
+
+MAKE_WEBHOOK_URL=https://hook.us1.make.com/your-make-webhook-id
+ZAPIER_WEBHOOK_URL=https://hooks.zapier.com/hooks/catch/your-zapier-hook-id
+WEBHOOK_SHARED_SECRET=choose-a-random-string
