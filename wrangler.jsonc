@@ -16,7 +16,7 @@
     {
       "binding": "DB",
       "database_name": "righouse-faucet",
-      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+      "database_id": "2e6bb891-8182-4259-ac37-f5b48b37dd7f"
     }
   ],
 

@@ -24,6 +24,11 @@ async function dispatchWebhooks(env, evt) {
   const headers = { "content-type": "application/json" };
   if (env.WEBHOOK_SHARED_SECRET) headers["x-faucet-secret"] = env.WEBHOOK_SHARED_SECRET;
 
+  if (targets.length === 0) {
+    console.log(`generated ${evt.event} ${evt.id} (no webhook targets configured, not sent anywhere)`);
+    return;
+  }
+
   const results = await Promise.allSettled(
     targets.map((url) => fetch(url, { method: "POST", headers, body: JSON.stringify(evt) }))
   );
@@ -32,6 +37,8 @@ async function dispatchWebhooks(env, evt) {
       console.error(`webhook dispatch failed for ${targets[i]}:`, r.reason);
     } else if (!r.value.ok) {
       console.error(`webhook dispatch to ${targets[i]} returned ${r.value.status}`);
+    } else {
+      console.log(`sent ${evt.event} ${evt.id} -> ${targets[i]}`);
     }
   });
 }
