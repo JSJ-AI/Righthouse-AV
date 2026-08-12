@@ -49,3 +49,29 @@ the live URL, and `npx wrangler secret list` if it's been a while.)
   dispatch logging improvements in `src/index.js`, neither committed to
   git. Committed both (`38a0e87`), added a missing `package-lock.json`
   that had never been tracked (`18c1dea`), and pushed both to GitHub.
+
+## Session log — 2026-08-12 (Cowork)
+
+This session started from a memory-continuity gap: no prior conversation
+history and empty project memory, despite real deploy work having
+happened in an earlier session. Recovered that prior work from git/file
+state and a transcript the user pasted back in, then:
+
+- Committed locally-uncommitted work (D1 database_id, webhook dispatch
+  logging) — `38a0e87`
+- Added missing `package-lock.json` — `18c1dea`
+- Added this file — `1ce8648`
+- **Still needs `git push origin master` run locally** — `device_bash`
+  (Claude's tool for this connected folder) has no network access, so it
+  can't push directly.
+
+Also researched relevant MCP connectors (Cloudflare Developer Platform,
+Make, Zapier) — none connected yet, would remove the need to relay
+`wrangler`/deploy status manually. And found the Gmail connector used in
+this session is draft-only (no send capability) and appears authenticated
+against a different account than `j2junker@gmail.com` — worth checking/
+fixing in Claude's connector settings before relying on it for this
+project.
+
+Remaining product task unchanged: build the Make/Zapier webhook trigger,
+set `MAKE_WEBHOOK_URL` / `ZAPIER_WEBHOOK_URL`, redeploy.
