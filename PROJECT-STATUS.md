@@ -75,3 +75,12 @@ project.
 
 Remaining product task unchanged: build the Make/Zapier webhook trigger,
 set `MAKE_WEBHOOK_URL` / `ZAPIER_WEBHOOK_URL`, redeploy.
+
+## Live confirmation — 2026-08-12
+User confirmed directly (not just from the prior session's transcript)
+that the deployed Worker at `rh-j2j3p.j2analytics.ai` is actively
+generating lead/order events. Claude attempted an independent check via
+WebFetch and was blocked by the site's own `robots.txt` — expected and
+correct, since that's the noindex/unlisted protection working as
+designed; it also blocks compliant crawler-style tools like WebFetch, not
+just search engines.
