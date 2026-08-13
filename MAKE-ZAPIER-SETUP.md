@@ -67,3 +67,33 @@ time — every event goes to both, useful for building parallel demos.
   earlier discussion in PROJECT-STATUS.md's session log) — connecting
   Cloudflare would let Claude check secret/deploy state directly instead
   of you reporting it back.
+
+## Progress — 2026-08-13
+Make scenario "Integration Webhooks" (in Jeff's Make account, jeff@j2analytics.ai,
+us2 region) is built and working end to end:
+- Custom Webhook trigger connected and receiving real events from
+  `rh-j2j3p.j2analytics.ai` (confirmed via repeated `/fire` tests).
+- `MAKE_WEBHOOK_URL` secret set and deployed
+  (`https://hook.us2.make.com/31z883nkr340xymxof2gtn9o0vkgkbyy`).
+- Router added with 4 working routes, filtering on live webhook data:
+  1. Business lead (`event`=`lead.created` AND `customer_type`=`business`)
+  2. Consumer lead (`event`=`lead.created` AND `customer_type`=`consumer`)
+  3. Card order → fulfillment (`event`=`order.created` AND `payment_terms`=`card`)
+  4. Net-30 order → invoicing (`event`=`order.created` AND `payment_terms`=`net_30`)
+
+Gotcha hit and resolved: Make's webhook field picker only reflects whichever
+sample shape (lead vs. order) it most recently captured — since this webhook
+receives two different event shapes, the picker would go "stale" and miss
+fields from the other shape (e.g. `payment_terms` invisible while showing a
+lead sample). Fix: re-trigger listening ("Run once"/wait-for-new) and fire a
+fresh event of the needed shape via `/fire`; also note that leaving the
+scenario page cancels the listening state, so "Run once" needs to be
+re-clicked after navigating back in.
+
+Not yet done: no actual destination actions wired to any route (no Slack/
+CRM/email yet) — routes filter correctly but don't take action. Also
+considered but not yet added: a 5th route for "big-deal alert"
+(`amount_total` > 3000).
+
+There is also an empty, unused second scenario in the same Make account
+called "RigHouse AV Events" — 0 activity, safe to ignore or delete.
