@@ -97,3 +97,47 @@ considered but not yet added: a 5th route for "big-deal alert"
 
 There is also an empty, unused second scenario in the same Make account
 called "RigHouse AV Events" — 0 activity, safe to ignore or delete.
+
+## Progress — 2026-08-13 (Zapier side)
+Built the same 4-route logic in Zapier as a learning/demo exercise, using
+**Paths by Zapier** (Zapier's equivalent of Make's Router) on a **Catch Hook**
+trigger (`https://hooks.zapier.com/hooks/catch/28541192/4tbic0o/`):
+- Path A — Business Lead: `event` (Exactly) matches `lead.created` AND
+  `customer_type` (Exactly) matches `business`
+- Path B — Consumer Lead: `event` (Exactly) matches `lead.created` AND
+  `customer_type` (Exactly) matches `consumer`
+- Path C — Card Order: `event` (Exactly) matches `order.created` AND
+  `payment_terms` (Exactly) matches `card`
+- Path D — Net-30 Order: `event` (Exactly) matches `order.created` AND
+  `payment_terms` (Exactly) matches `net_30`
+
+Same field-picker gotcha as Make hit here too (payment_terms invisible
+until an order.created sample was captured) — same fix worked: fire more
+test events via `/fire` until Zapier's trigger caught an order-shaped
+sample.
+
+Each path needed *some* configured action to satisfy Zapier's publish
+validation (unlike Make, which allows a Router branch to dead-end with no
+module attached) — added a trivial **Formatter by Zapier → Text →
+Capitalize** step per path, mapped to the `event` field, purely as a
+placeholder action. All four were individually tested successfully (each
+shows real "Data out," e.g. "Order.Created").
+
+**BLOCKED — not resolved as of 2026-08-13**: Despite all four Formatter
+steps showing fully green (Setup/Configure/Test all checked, real test
+output), the Zap's Status panel and the main diagram still flag all four
+with "!" / "Please add an action," and the **Publish** button stays
+disabled. Tried: reloading the browser page (no change), retesting each
+step individually (no change), checking step 2 ("Split into paths," the
+parent Paths container) — it shows the same warning, most likely just
+rolling up the same child-step status rather than being a separate issue.
+Not yet tried: Zapier support/community forum, deleting and re-adding one
+of the action steps from scratch, or trying a different placeholder
+action type (e.g. Delay by Zapier) in case Formatter specifically has a
+bug.
+
+**Net effect: Make integration is fully live and verified working
+end-to-end (real webhook traffic routing through all 4 routes, confirmed
+via Make's History log). Zapier integration is fully built but stuck in
+Draft — cannot go live until the "Please add an action" publish block is
+resolved.**

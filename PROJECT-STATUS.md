@@ -84,3 +84,35 @@ WebFetch and was blocked by the site's own `robots.txt` — expected and
 correct, since that's the noindex/unlisted protection working as
 designed; it also blocks compliant crawler-style tools like WebFetch, not
 just search engines.
+
+## Session log — 2026-08-13 (Make live + Zapier build, Cowork)
+
+Continued from the Make Router build (4 routes, verified working). This
+session:
+
+- **Confirmed the Make scenario was silently OFF** — its History tab only
+  showed "Manual run" entries (one per "Run once" click), never automatic
+  runs, despite dozens of `/fire` webhook events being sent. Turning the
+  scenario ON caused it to immediately process the whole backlog of
+  queued webhook events automatically ("Instant" trigger runs, all
+  Success). **Make integration is now genuinely live**, not just
+  demo-able via manual runs.
+- Fired a large mixed batch of test events (leads + card orders + net-30
+  orders) via `/fire` (Chrome browser automation, since WebFetch is
+  blocked by the site's own robots.txt) to give both tools real samples
+  of every shape.
+- Built the same 4-route logic in **Zapier** using Paths by Zapier, as a
+  parallel learning exercise (see `MAKE-ZAPIER-SETUP.md` "Progress —
+  2026-08-13 (Zapier side)" for full detail). Hit the same field-picker
+  staleness issue Make had; same fix worked (fire more events until an
+  order sample was captured).
+- **Zapier is stuck**: cannot Publish. Zapier requires every Path to have
+  a configured action (Make allows a dead-end branch, Zapier doesn't).
+  Added a trivial Formatter-by-Zapier placeholder action to all 4 paths;
+  each tests successfully individually, but the Zap's own Status panel
+  and Publish button still say "Please add an action" even after a page
+  reload. Tabled as an open problem — full detail and what's been tried
+  is logged in `MAKE-ZAPIER-SETUP.md`.
+
+**Current state**: Make = live and verified end-to-end. Zapier = fully
+built, blocked in Draft by an unresolved publish-validation error.
