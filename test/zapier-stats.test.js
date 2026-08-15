@@ -1,7 +1,7 @@
-// Plain Node test -- exercises the response parsing in zapier-stats.js
-// against a few plausible Storage-by-Zapier response shapes (the real
-// shape wasn't verifiable from the dev sandbox this was written in -- see
-// the comment at the top of zapier-stats.js). Run with:
+// Plain Node test -- exercises the response parsing in zapier-stats.js.
+// Covers the confirmed live shape (a flat { key: value } map, verified
+// 2026-08-14 against the real store.zapier.com API) plus a couple of
+// array-shaped fallbacks kept for defense. Run with:
 //   node test/zapier-stats.test.js
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -33,7 +33,22 @@ test("returns null (not throws) when fetch itself rejects", async () => {
   assert.equal(stats, null);
 });
 
-test("parses a bare-array response shape", async () => {
+test("parses the confirmed live flat { key: value } map shape", async () => {
+  const body = {
+    business_leads_count: 8,
+    card_orders_count: 9,
+    consumer_leads_count: 10,
+    net30_orders_count: 4,
+  };
+  const stats = await getZapierStats("secret123", fakeFetch(body));
+  const byKey = Object.fromEntries(stats.map((s) => [s.key, s.value]));
+  assert.equal(byKey.business_leads_count, 8);
+  assert.equal(byKey.card_orders_count, 9);
+  assert.equal(byKey.consumer_leads_count, 10);
+  assert.equal(byKey.net30_orders_count, 4);
+});
+
+test("parses a bare-array response shape (fallback)", async () => {
   const body = [
     { key: "business_leads_count", value: "5" },
     { key: "consumer_leads_count", value: "2" },

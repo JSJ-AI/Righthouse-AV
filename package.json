@@ -15,6 +15,7 @@
     "secrets:zapier": "wrangler secret put ZAPIER_WEBHOOK_URL",
     "secrets:shared": "wrangler secret put WEBHOOK_SHARED_SECRET",
     "secrets:zapier-storage": "wrangler secret put ZAPIER_STORAGE_SECRET",
+    "secrets:make-token": "wrangler secret put MAKE_API_TOKEN",
     "test": "node --test"
   },
   "devDependencies": {

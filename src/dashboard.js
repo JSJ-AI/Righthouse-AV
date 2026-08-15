@@ -9,7 +9,15 @@ function whoLead(l) {
   return `${esc(l.first_name)} ${esc(l.last_name)}`;
 }
 
-export function renderDashboard({ businessName, stats, leads, orders, cronSchedule, zapierStats }) {
+export function renderDashboard({
+  businessName,
+  stats,
+  leads,
+  orders,
+  cronSchedule,
+  zapierStats,
+  makeStats,
+}) {
   const conversionRate = stats.leads > 0 ? ((stats.converted / stats.leads) * 100).toFixed(1) : "0.0";
 
   const zapierSection = zapierStats
@@ -20,6 +28,15 @@ export function renderDashboard({ businessName, stats, leads, orders, cronSchedu
         )
         .join("")}</div>`
     : `<p class="sub">Not configured yet &mdash; set the <code>ZAPIER_STORAGE_SECRET</code> secret (<code>npm run secrets:zapier-storage</code>) to show live counts from the Zap's Storage by Zapier counters here.</p>`;
+
+  const makeSection = makeStats
+    ? `<div class="stats">${makeStats
+        .map(
+          (s) =>
+            `<div class="stat"><div class="n">${esc(s.value)}</div><div class="l">${esc(s.label)}</div></div>`
+        )
+        .join("")}</div>`
+    : `<p class="sub">Not configured yet &mdash; set the <code>MAKE_API_TOKEN</code> secret (<code>npm run secrets:make-token</code>) to show live counts from the Make Data Store counters here.</p>`;
 
   const leadRows = leads
     .map(
@@ -83,6 +100,10 @@ export function renderDashboard({ businessName, stats, leads, orders, cronSchedu
   <h2>Zapier path counters <span class="badge">Storage by Zapier</span></h2>
   <p class="sub">How many events each Zap path (Business Lead / Consumer Lead / Card Order / Net Order) has actually processed, straight from the Zap's own counters.</p>
   ${zapierSection}
+
+  <h2>Make path counters <span class="badge">Make Data Store</span></h2>
+  <p class="sub">Same four routes (Business Lead / Consumer Lead / Card Order / Net-30 Order), this time from the Make scenario's Router paths and its Data Store counters.</p>
+  ${makeSection}
 
   <h2>Recent leads</h2>
   <table>

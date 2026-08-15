@@ -5,17 +5,16 @@
 // alongside the D1-backed totals that already come from Make's side and
 // from the faucet's own records.
 //
-// Storage by Zapier's REST API (https://store.zapier.com) isn't fully
-// documented publicly -- Zapier's own help articles and community posts
-// describe the endpoint and auth but don't publish an exact response
-// schema, and this Worker's outbound fetch couldn't be test-verified
-// against the live API from the dev sandbox this was written in (network
-// egress there is allowlisted and store.zapier.com wasn't reachable from
-// it). So this parses defensively: it accepts a few plausible response
-// shapes and falls back to "unavailable" rather than throwing, so a
-// Zapier-side hiccup never breaks the rest of the dashboard. If the real
-// shape turns out to differ once this is live, tweak `extractRecords`
-// below -- everything else (fetch, keys, rendering) should keep working.
+// Confirmed live response shape (2026-08-14, via a direct GET against
+// https://store.zapier.com/api/records?secret=... with the real project
+// secret): a flat object mapping key -> value directly, e.g.
+//   { "business_leads_count": 8, "card_orders_count": 9, ... }
+// -- not an array of {key, value} records as Zapier's own docs/community
+// posts vaguely suggested. This parses that flat-map shape as the primary
+// case, with a couple of array-shaped fallbacks kept just in case Zapier
+// ever changes it, and degrades to "unavailable" (never throws) on
+// anything unrecognized so a Zapier-side hiccup never breaks the rest of
+// the dashboard.
 
 export const ZAPIER_STORE_KEYS = [
   "business_leads_count",
@@ -31,11 +30,11 @@ const LABELS = {
   net30_orders_count: "Net-30 orders",
 };
 
-function extractRecords(body) {
+function extractArrayRecords(body) {
   if (Array.isArray(body)) return body;
   if (Array.isArray(body?.results)) return body.results;
   if (Array.isArray(body?.records)) return body.records;
-  return [];
+  return null;
 }
 
 // Returns an array of { key, label, value } for the 4 known counters, or
@@ -58,14 +57,25 @@ export async function getZapierStats(secret, fetchImpl = fetch) {
     }
 
     const body = await res.json();
-    const records = extractRecords(body);
-
     const values = Object.fromEntries(ZAPIER_STORE_KEYS.map((k) => [k, 0]));
-    for (const rec of records) {
-      const key = rec?.key ?? rec?.name;
-      if (key && key in values) {
-        const num = Number(rec.value);
-        values[key] = Number.isFinite(num) ? num : rec.value;
+
+    const arrayRecords = extractArrayRecords(body);
+    if (arrayRecords) {
+      // Fallback shape: [{ key, value }, ...]
+      for (const rec of arrayRecords) {
+        const key = rec?.key ?? rec?.name;
+        if (key && key in values) {
+          const num = Number(rec.value);
+          values[key] = Number.isFinite(num) ? num : rec.value;
+        }
+      }
+    } else if (body && typeof body === "object") {
+      // Confirmed live shape: flat { key: value, ... } map.
+      for (const key of ZAPIER_STORE_KEYS) {
+        if (key in body) {
+          const num = Number(body[key]);
+          values[key] = Number.isFinite(num) ? num : body[key];
+        }
       }
     }
 

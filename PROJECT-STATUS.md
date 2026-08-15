@@ -180,3 +180,113 @@ earlier local session — neither should be committed.
 6. Keep an eye on the Zapier free-trial expiry (~13 days from
    2026-08-14) — the published Zap needs a plan upgrade to keep running
    past that.
+
+## Session log — 2026-08-15 (Make-side path counters + two real bugs found and fixed, Cowork)
+
+Picked up the "build the Make-side equivalent of the Zapier path counters"
+task via Claude-in-Chrome browser automation against Make's web UI (Make
+has no one-click "Increment Value" action like Storage by Zapier, so this
+needed to be built from primitives).
+
+**Built in Make** (org 2193870, all via browser automation):
+- Data Store **"RigHouse AV Path Counters"** (store ID `132225`), structure
+  "Path Counter" with fields `count` (Number) and `path` (Text). Seeded 4
+  records: `business_leads_count`, `consumer_leads_count`,
+  `card_orders_count`, `net30_orders_count`, all starting at `count: 0`.
+- Added a **Get a record → Update a record** module pair to each of the 4
+  Router routes in the "Integration Webhooks" scenario (modules 9/14,
+  10/15, 11/16, 12/17), incrementing count via `1 + {{N.count}}`.
+
+**Bug #1 — arithmetic that wasn't arithmetic.** After wiring all 4 routes
+and firing a test webhook, Make auto-deactivated the whole scenario with
+`BundleValidationError: Invalid number in parameter 'count'`. Root cause:
+in Make's field editor, `1 + {{11.count}}` is NOT evaluated as math — only
+the part inside `{{ }}` is a live expression; text typed outside it (the
+`"1 + "`) stays literal, so the field's actual runtime value was the
+string `"1 + 0"`, which fails Number validation. Confirmed against Make's
+own community docs (not guessed) before fixing:
+[Math & variables in Make](https://community.make.com/t/math-variables-in-make-some-clarifications-needed/17513)
+confirms the whole expression must be inside the braces, e.g.
+`{{1 + 11.count}}`. Fixed all 4 Update modules' `count` field to
+`{{1 + N.count}}` (verified each one re-renders with a green "+" operator
+chip, not plain text, before saving) — this is the correct, generalizable
+fix, not a one-off patch.
+
+**Bug #2 — a real typo, unrelated to bug #1.** After fixing the arithmetic,
+3 of 4 routes worked immediately (`business_leads_count`,
+`card_orders_count`, `net30_orders_count` all incremented correctly on
+live test events), but `consumer_leads_count` stayed stuck at 0. Root
+cause: the Consumer Lead route's filter checked
+`customer_type = Consumer` (capital C) but real events carry
+`customer_type: "consumer"` (lowercase) — so the filter silently never
+matched, routing those events nowhere (1-operation "Success" runs, not
+errors, which is why it wasn't obvious). Fixed the filter's comparison
+value to lowercase `consumer`; confirmed with a fresh test event
+afterward that it now increments correctly (0 → 1).
+
+**Verification (per standing "don't fabricate, verify" preference):**
+after both fixes, cleared/reprocessed the queued webhook backlog, then
+fired fresh test events at the live Worker's `/fire` endpoint for all 4
+event types (business lead, consumer lead, card order, net-30 order) and
+confirmed each one's Data Store counter actually incremented by checking
+the Data Store's live values directly — not just trusting Make's "Success"
+status, since bug #2 proved a route can say "Success" while silently doing
+nothing.
+
+**Built the dashboard integration**, mirroring the existing Zapier one:
+- `src/make-stats.js` (new) — `getMakeStats(token, fetchImpl)`, same
+  defensive/never-throws design as `zapier-stats.js`. Calls Make's API v2
+  Data Store endpoint: `GET https://us2.make.com/api/v2/data-stores/132225/data`,
+  header `Authorization: Token <MAKE_API_TOKEN>`.
+  - **Verified, not guessed**, this time: confirmed the exact endpoint
+    path and query params against Make's own API reference docs, *and*
+    independently confirmed the live browser was calling that exact same
+    URL (`api/v2/data-stores/132225/data?pg[limit]=25`) when rendering the
+    Data Store's own records grid, via the browser's network log. Could
+    not fetch and inspect the raw JSON response body directly with a real
+    token — an attempt to do that via injected page JavaScript was
+    correctly blocked by this session's safety tooling (embedding a bearer
+    token in an auto-run script), and no workaround was attempted. So the
+    response *shape* (`{ records: [ { key, data: { count, path } } ] }`)
+    is sourced from Make's official API docs, not independently
+    hand-verified the way the Zapier shape was in the 2026-08-14 session.
+    **Recommend spot-checking `/make-stats` on the live site after
+    deploying**, same as was done for `/zapier-stats` — if the numbers
+    come back wrong, the parsing in `make-stats.js` is the first place to
+    check, exactly like the Zapier shape bug that session.
+- Wired into `handleDashboard` in `src/index.js` alongside the existing
+  Zapier call; added a `/make-stats` debug endpoint (same pattern as
+  `/zapier-stats`); added `secrets:make-token` npm script.
+- New "Make path counters" section in `src/dashboard.js`, directly below
+  the existing "Zapier path counters" section (single page, stacked
+  sections — confirmed with the user this is the wanted layout, not
+  separate tabs/pages).
+- 6 new unit tests in `test/make-stats.test.js` (mirrors
+  `test/zapier-stats.test.js`'s pattern). Full suite: 20/20 passing.
+- Generated a Make API token (label "RigHouse dashboard (datastores:read)",
+  scope `datastores:read` only) via Make's own UI for this purpose —
+  delivered to the user directly (like the Zapier Store Secret in the
+  2026-08-14 session) rather than entered into any secret store by Claude.
+  User still needs to run `npm run secrets:make-token` and paste it in.
+
+**Current state**: Make automation is now genuinely live and verified
+end-to-end for all 4 routes (this session found and fixed 2 real bugs that
+were silently breaking it). Dashboard code for the Make counters is
+written and tested locally, not yet deployed — matches the same "written +
+tested, not yet deployed/committed" state the Zapier dashboard work was
+left in on 2026-08-14, plus this Make work on top of it.
+
+**Next steps** (when ready to resume):
+1. `npm run secrets:make-token` (paste the token above), `npm test`
+   (should show 20/20), `npm run deploy`.
+2. Hit `/make-stats` on the live site and confirm real, non-zero numbers
+   come back — this is the step that actually validates the response-shape
+   assumption above, since it couldn't be independently verified from
+   this session's sandbox.
+3. If `/make-stats` comes back wrong, check `make-stats.js`'s parsing
+   against whatever the real shape turns out to be (same fix pattern as
+   the Zapier shape bug on 2026-08-14).
+4. `git add -A` (covers both this session's and the still-uncommitted
+   2026-08-14 Zapier dashboard files) and commit/push once everything is
+   confirmed working live.
+5. Zapier free-trial expiry reminder still applies (~2026-08-27).

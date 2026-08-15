@@ -17,6 +17,7 @@ import {
 } from "./db.js";
 import { renderDashboard } from "./dashboard.js";
 import { getZapierStats } from "./zapier-stats.js";
+import { getMakeStats } from "./make-stats.js";
 
 const CRON_SCHEDULE = "*/3 * * * *"; // keep in sync with wrangler.jsonc, dashboard display only
 
@@ -88,11 +89,12 @@ async function handleRecent(env) {
 }
 
 async function handleDashboard(env) {
-  const [stats, leads, orders, zapierStats] = await Promise.all([
+  const [stats, leads, orders, zapierStats, makeStats] = await Promise.all([
     counts(env.DB),
     recentLeads(env.DB, 20),
     recentOrders(env.DB, 20),
     getZapierStats(env.ZAPIER_STORAGE_SECRET),
+    getMakeStats(env.MAKE_API_TOKEN),
   ]);
   const html = renderDashboard({
     businessName: env.BUSINESS_NAME || BUSINESS_NAME,
@@ -101,6 +103,7 @@ async function handleDashboard(env) {
     orders,
     cronSchedule: CRON_SCHEDULE,
     zapierStats,
+    makeStats,
   });
   return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
 }
@@ -118,6 +121,17 @@ async function handleZapierStats(env) {
       null,
       2
     ),
+    { headers: { "content-type": "application/json" } }
+  );
+}
+
+// Debug/verification endpoint for the Make-side counters, same purpose as
+// handleZapierStats above: hit this after deploying to confirm the numbers
+// coming back from the Make Data Store API look right.
+async function handleMakeStats(env) {
+  const makeStats = await getMakeStats(env.MAKE_API_TOKEN);
+  return new Response(
+    JSON.stringify({ configured: Boolean(env.MAKE_API_TOKEN), stats: makeStats }, null, 2),
     { headers: { "content-type": "application/json" } }
   );
 }
@@ -191,6 +205,12 @@ export default {
 
     if (pathname === "/zapier-stats") {
       const res = await handleZapierStats(env);
+      Object.entries(NOINDEX_HEADERS).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    if (pathname === "/make-stats") {
+      const res = await handleMakeStats(env);
       Object.entries(NOINDEX_HEADERS).forEach(([k, v]) => res.headers.set(k, v));
       return res;
     }

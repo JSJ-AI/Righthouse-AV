@@ -1,0 +1,275 @@
+diff --git a/package.json b/package.json
+index 55fe7cf..2d5a4ae 100644
+--- a/package.json
++++ b/package.json
+@@ -14,7 +14,8 @@
+     "secrets:make": "wrangler secret put MAKE_WEBHOOK_URL",
+     "secrets:zapier": "wrangler secret put ZAPIER_WEBHOOK_URL",
+     "secrets:shared": "wrangler secret put WEBHOOK_SHARED_SECRET",
+-    "test": "node test/data.test.js"
++    "secrets:zapier-storage": "wrangler secret put ZAPIER_STORAGE_SECRET",
++    "test": "node --test"
+   },
+   "devDependencies": {
+     "wrangler": "^4.120.1"
+diff --git a/src/dashboard.js b/src/dashboard.js
+index d1526fa..e3bd91f 100644
+--- a/src/dashboard.js
++++ b/src/dashboard.js
+@@ -9,9 +9,18 @@ function whoLead(l) {
+   return `${esc(l.first_name)} ${esc(l.last_name)}`;
+ }
+ 
+-export function renderDashboard({ businessName, stats, leads, orders, cronSchedule }) {
++export function renderDashboard({ businessName, stats, leads, orders, cronSchedule, zapierStats }) {
+   const conversionRate = stats.leads > 0 ? ((stats.converted / stats.leads) * 100).toFixed(1) : "0.0";
+ 
++  const zapierSection = zapierStats
++    ? `<div class="stats">${zapierStats
++        .map(
++          (s) =>
++            `<div class="stat"><div class="n">${esc(s.value)}</div><div class="l">${esc(s.label)}</div></div>`
++        )
++        .join("")}</div>`
++    : `<p class="sub">Not configured yet &mdash; set the <code>ZAPIER_STORAGE_SECRET</code> secret (<code>npm run secrets:zapier-storage</code>) to show live counts from the Zap's Storage by Zapier counters here.</p>`;
++
+   const leadRows = leads
+     .map(
+       (l) => `<tr>
+@@ -71,6 +80,10 @@ export function renderDashboard({ businessName, stats, leads, orders, cronSchedu
+     <div class="stat"><div class="n">${conversionRate}%</div><div class="l">lead &rarr; order conversion</div></div>
+   </div>
+ 
++  <h2>Zapier path counters <span class="badge">Storage by Zapier</span></h2>
++  <p class="sub">How many events each Zap path (Business Lead / Consumer Lead / Card Order / Net Order) has actually processed, straight from the Zap's own counters.</p>
++  ${zapierSection}
++
+   <h2>Recent leads</h2>
+   <table>
+     <thead><tr><th>Time</th><th>Type</th><th>Contact</th><th>Org type</th><th>Source</th><th>Status</th></tr></thead>
+diff --git a/src/index.js b/src/index.js
+index d1dafa8..4c7ed1b 100755
+--- a/src/index.js
++++ b/src/index.js
+@@ -16,6 +16,7 @@ import {
+   counts,
+ } from "./db.js";
+ import { renderDashboard } from "./dashboard.js";
++import { getZapierStats } from "./zapier-stats.js";
+ 
+ const CRON_SCHEDULE = "*/3 * * * *"; // keep in sync with wrangler.jsonc, dashboard display only
+ 
+@@ -87,10 +88,11 @@ async function handleRecent(env) {
+ }
+ 
+ async function handleDashboard(env) {
+-  const [stats, leads, orders] = await Promise.all([
++  const [stats, leads, orders, zapierStats] = await Promise.all([
+     counts(env.DB),
+     recentLeads(env.DB, 20),
+     recentOrders(env.DB, 20),
++    getZapierStats(env.ZAPIER_STORAGE_SECRET),
+   ]);
+   const html = renderDashboard({
+     businessName: env.BUSINESS_NAME || BUSINESS_NAME,
+@@ -98,10 +100,28 @@ async function handleDashboard(env) {
+     leads,
+     orders,
+     cronSchedule: CRON_SCHEDULE,
++    zapierStats,
+   });
+   return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
+ }
+ 
++// Debug/verification endpoint: returns the raw Zapier path-counter fetch so
++// it can be checked directly (the real store.zapier.com response shape
++// couldn't be verified from the dev sandbox this was written in -- see
++// zapier-stats.js). Hit this after deploying to confirm the numbers look
++// right; if they don't, the parsing in zapier-stats.js is the place to fix.
++async function handleZapierStats(env) {
++  const zapierStats = await getZapierStats(env.ZAPIER_STORAGE_SECRET);
++  return new Response(
++    JSON.stringify(
++      { configured: Boolean(env.ZAPIER_STORAGE_SECRET), stats: zapierStats },
++      null,
++      2
++    ),
++    { headers: { "content-type": "application/json" } }
++  );
++}
++
+ // "Blind page" posture: this is an unlisted demo page, not an
+ // access-controlled one. Nothing here stops someone who has the exact URL
+ // from viewing the dashboard -- these headers just keep it out of search
+@@ -169,6 +189,12 @@ export default {
+       return res;
+     }
+ 
++    if (pathname === "/zapier-stats") {
++      const res = await handleZapierStats(env);
++      Object.entries(NOINDEX_HEADERS).forEach(([k, v]) => res.headers.set(k, v));
++      return res;
++    }
++
+     if (pathname === "/") {
+       const res = await handleDashboard(env);
+       Object.entries(NOINDEX_HEADERS).forEach(([k, v]) => res.headers.set(k, v));
+diff --git a/src/zapier-stats.js b/src/zapier-stats.js
+new file mode 100644
+index 0000000..d11b3a7
+--- /dev/null
++++ b/src/zapier-stats.js
+@@ -0,0 +1,77 @@
++// Pulls the four per-path counters the RigHouse AV Zap increments via
++// Storage by Zapier (one "Increment Value" step per Path: Business Lead,
++// Consumer Lead, Card Order, Net Order). This lets the dashboard show, at a
++// glance, how many events each Zapier path has actually processed --
++// alongside the D1-backed totals that already come from Make's side and
++// from the faucet's own records.
++//
++// Storage by Zapier's REST API (https://store.zapier.com) isn't fully
++// documented publicly -- Zapier's own help articles and community posts
++// describe the endpoint and auth but don't publish an exact response
++// schema, and this Worker's outbound fetch couldn't be test-verified
++// against the live API from the dev sandbox this was written in (network
++// egress there is allowlisted and store.zapier.com wasn't reachable from
++// it). So this parses defensively: it accepts a few plausible response
++// shapes and falls back to "unavailable" rather than throwing, so a
++// Zapier-side hiccup never breaks the rest of the dashboard. If the real
++// shape turns out to differ once this is live, tweak `extractRecords`
++// below -- everything else (fetch, keys, rendering) should keep working.
++
++export const ZAPIER_STORE_KEYS = [
++  "business_leads_count",
++  "consumer_leads_count",
++  "card_orders_count",
++  "net30_orders_count",
++];
++
++const LABELS = {
++  business_leads_count: "Business leads",
++  consumer_leads_count: "Consumer leads",
++  card_orders_count: "Card orders",
++  net30_orders_count: "Net-30 orders",
++};
++
++function extractRecords(body) {
++  if (Array.isArray(body)) return body;
++  if (Array.isArray(body?.results)) return body.results;
++  if (Array.isArray(body?.records)) return body.records;
++  return [];
++}
++
++// Returns an array of { key, label, value } for the 4 known counters, or
++// null if ZAPIER_STORAGE_SECRET isn't configured or the fetch/parse fails
++// for any reason. Never throws.
++export async function getZapierStats(secret, fetchImpl = fetch) {
++  if (!secret) return null;
++
++  const qs = ZAPIER_STORE_KEYS.map((k) => `key=${encodeURIComponent(k)}`).join("&");
++  const url = `https://store.zapier.com/api/records?${qs}`;
++
++  try {
++    const res = await fetchImpl(url, {
++      headers: { "X-Secret": secret },
++      signal: AbortSignal.timeout(5000),
++    });
++    if (!res.ok) {
++      console.error(`Storage by Zapier fetch failed: HTTP ${res.status}`);
++      return null;
++    }
++
++    const body = await res.json();
++    const records = extractRecords(body);
++
++    const values = Object.fromEntries(ZAPIER_STORE_KEYS.map((k) => [k, 0]));
++    for (const rec of records) {
++      const key = rec?.key ?? rec?.name;
++      if (key && key in values) {
++        const num = Number(rec.value);
++        values[key] = Number.isFinite(num) ? num : rec.value;
++      }
++    }
++
++    return ZAPIER_STORE_KEYS.map((key) => ({ key, label: LABELS[key], value: values[key] }));
++  } catch (err) {
++    console.error("Storage by Zapier fetch error:", err);
++    return null;
++  }
++}
+diff --git a/test/zapier-stats.test.js b/test/zapier-stats.test.js
+new file mode 100644
+index 0000000..f15273b
+--- /dev/null
++++ b/test/zapier-stats.test.js
+@@ -0,0 +1,70 @@
++// Plain Node test -- exercises the response parsing in zapier-stats.js
++// against a few plausible Storage-by-Zapier response shapes (the real
++// shape wasn't verifiable from the dev sandbox this was written in -- see
++// the comment at the top of zapier-stats.js). Run with:
++//   node test/zapier-stats.test.js
++import test from "node:test";
++import assert from "node:assert/strict";
++import { getZapierStats, ZAPIER_STORE_KEYS } from "../src/zapier-stats.js";
++
++function fakeFetch(body, ok = true, status = 200) {
++  return async () => ({
++    ok,
++    status,
++    json: async () => body,
++  });
++}
++
++test("returns null when no secret is configured", async () => {
++  const stats = await getZapierStats(undefined, fakeFetch({ results: [] }));
++  assert.equal(stats, null);
++});
++
++test("returns null (not throws) on a non-2xx response", async () => {
++  const stats = await getZapierStats("secret123", fakeFetch({}, false, 500));
++  assert.equal(stats, null);
++});
++
++test("returns null (not throws) when fetch itself rejects", async () => {
++  const throwingFetch = async () => {
++    throw new Error("network down");
++  };
++  const stats = await getZapierStats("secret123", throwingFetch);
++  assert.equal(stats, null);
++});
++
++test("parses a bare-array response shape", async () => {
++  const body = [
++    { key: "business_leads_count", value: "5" },
++    { key: "consumer_leads_count", value: "2" },
++  ];
++  const stats = await getZapierStats("secret123", fakeFetch(body));
++  assert.ok(stats);
++  assert.equal(stats.length, ZAPIER_STORE_KEYS.length);
++  const byKey = Object.fromEntries(stats.map((s) => [s.key, s.value]));
++  assert.equal(byKey.business_leads_count, 5);
++  assert.equal(byKey.consumer_leads_count, 2);
++  // Keys with no matching record still show up, defaulted to 0.
++  assert.equal(byKey.card_orders_count, 0);
++  assert.equal(byKey.net30_orders_count, 0);
++});
++
++test("parses a { results: [...] } response shape", async () => {
++  const body = { results: [{ key: "card_orders_count", value: 3 }] };
++  const stats = await getZapierStats("secret123", fakeFetch(body));
++  const byKey = Object.fromEntries(stats.map((s) => [s.key, s.value]));
++  assert.equal(byKey.card_orders_count, 3);
++});
++
++test("parses a { records: [...] } response shape", async () => {
++  const body = { records: [{ key: "net30_orders_count", value: 7 }] };
++  const stats = await getZapierStats("secret123", fakeFetch(body));
++  const byKey = Object.fromEntries(stats.map((s) => [s.key, s.value]));
++  assert.equal(byKey.net30_orders_count, 7);
++});
++
++test("unrecognized response shape degrades to all-zero rather than throwing", async () => {
++  const stats = await getZapierStats("secret123", fakeFetch({ totally: "unexpected" }));
++  assert.ok(stats);
++  for (const s of stats) assert.equal(s.value, 0);
++});
