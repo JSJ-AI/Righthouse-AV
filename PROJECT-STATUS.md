@@ -116,3 +116,67 @@ session:
 
 **Current state**: Make = live and verified end-to-end. Zapier = fully
 built, blocked in Draft by an unresolved publish-validation error.
+
+## Session log — 2026-08-14 (Zapier publish fix + dashboard counters, Cowork)
+
+Picked up the Zapier "Please add an action" block from the 2026-08-13 log.
+
+- **Root-caused it**: swapped the Business Lead path's placeholder
+  Formatter-by-Zapier (Capitalize) step for **Storage by Zapier →
+  Increment Value** as a genuine, non-email, no-clutter per-path action
+  (user explicitly ruled out generic email actions). The Status panel's
+  "Please add an action" flag cleared for that path immediately. Confirms
+  the block was tied specifically to using Formatter's Capitalize step as
+  a Path action, not a general Paths/Zap-level bug.
+- Repeated the same swap on the other 3 paths, each with its own counter
+  key: `business_leads_count`, `consumer_leads_count`,
+  `card_orders_count`, `net30_orders_count`. All 4 tested green.
+- **Zap published** (v1) — Zapier side is now genuinely live, matching
+  Make. Note: the Zapier account is on a free trial that expires in ~13
+  days; Paths/Multi-step Zaps are paid features, so this Zap needs a plan
+  upgrade before the trial ends or it stops running.
+- Storage by Zapier connection required a self-chosen "Store Secret" (UUID
+  format, functions as a combined username+password for the storage
+  bucket) — generated one, given to the user to enter directly rather
+  than typed in by Claude (treated as a password-equivalent field).
+- **Built dashboard integration** for the 4 Zapier counters:
+  `src/zapier-stats.js` (new) fetches them from Storage by Zapier's REST
+  API (`store.zapier.com/api/records`), wired into `handleDashboard` in
+  `src/index.js`, rendered as a new "Zapier path counters" section in
+  `src/dashboard.js`. Added a `/zapier-stats` debug endpoint and a
+  `secrets:zapier-storage` npm script. 14 unit tests in
+  `test/zapier-stats.test.js`.
+- **First deploy had a real parsing bug**: guessed at Storage by Zapier's
+  undocumented response shape (array of `{key, value}` records) since the
+  API wasn't reachable from the dev sandbox to verify directly. Live
+  result came back all zeros. User ran a direct `Invoke-RestMethod`
+  against `store.zapier.com` from PowerShell and confirmed the real shape
+  is a **flat `{key: value}` object**, not an array. Fixed
+  `zapier-stats.js` to parse that shape (kept the array-shape parsing as a
+  defensive fallback), redeployed.
+- Delivered all code changes as downloadable files/patches (no GitHub push
+  or Cloudflare deploy access from this cloud session — no credentials,
+  and the user's local repo folder wasn't connected via the device
+  bridge). User applied patches and ran `npm run secrets:zapier-storage`,
+  `npm test`, `npm run deploy` locally themselves.
+
+**As of this update**: code changes are written, tested (14/14 passing
+locally on the user's machine), and deployed live — but **not yet
+committed/pushed to GitHub**. User asked to pause here before the final
+`git add` / `commit` / `push` step. Local working tree also has two stray
+`.patch` files (`zapier-dashboard-counters.patch`,
+`zapier-stats-fix.patch`) and a leftover `_to_delete/` folder from an
+earlier local session — neither should be committed.
+
+**Next steps** (when ready to resume):
+1. Confirm `/zapier-stats` on the live site shows real numbers (last
+   check before the pause hadn't been reported back yet).
+2. `git add src/zapier-stats.js src/index.js src/dashboard.js
+   test/zapier-stats.test.js package.json package-lock.json`
+3. `git commit -m "Add live Zapier path counters to dashboard"`
+4. `git push origin master`
+5. Delete the two `.patch` files and (once confirmed empty of anything
+   wanted) the `_to_delete/` folder.
+6. Keep an eye on the Zapier free-trial expiry (~13 days from
+   2026-08-14) — the published Zap needs a plan upgrade to keep running
+   past that.

@@ -16,6 +16,7 @@ import {
   counts,
 } from "./db.js";
 import { renderDashboard } from "./dashboard.js";
+import { getZapierStats } from "./zapier-stats.js";
 
 const CRON_SCHEDULE = "*/3 * * * *"; // keep in sync with wrangler.jsonc, dashboard display only
 
@@ -87,10 +88,11 @@ async function handleRecent(env) {
 }
 
 async function handleDashboard(env) {
-  const [stats, leads, orders] = await Promise.all([
+  const [stats, leads, orders, zapierStats] = await Promise.all([
     counts(env.DB),
     recentLeads(env.DB, 20),
     recentOrders(env.DB, 20),
+    getZapierStats(env.ZAPIER_STORAGE_SECRET),
   ]);
   const html = renderDashboard({
     businessName: env.BUSINESS_NAME || BUSINESS_NAME,
@@ -98,8 +100,26 @@ async function handleDashboard(env) {
     leads,
     orders,
     cronSchedule: CRON_SCHEDULE,
+    zapierStats,
   });
   return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
+}
+
+// Debug/verification endpoint: returns the raw Zapier path-counter fetch so
+// it can be checked directly (the real store.zapier.com response shape
+// couldn't be verified from the dev sandbox this was written in -- see
+// zapier-stats.js). Hit this after deploying to confirm the numbers look
+// right; if they don't, the parsing in zapier-stats.js is the place to fix.
+async function handleZapierStats(env) {
+  const zapierStats = await getZapierStats(env.ZAPIER_STORAGE_SECRET);
+  return new Response(
+    JSON.stringify(
+      { configured: Boolean(env.ZAPIER_STORAGE_SECRET), stats: zapierStats },
+      null,
+      2
+    ),
+    { headers: { "content-type": "application/json" } }
+  );
 }
 
 // "Blind page" posture: this is an unlisted demo page, not an
@@ -165,6 +185,12 @@ export default {
 
     if (pathname === "/recent") {
       const res = await handleRecent(env);
+      Object.entries(NOINDEX_HEADERS).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    if (pathname === "/zapier-stats") {
+      const res = await handleZapierStats(env);
       Object.entries(NOINDEX_HEADERS).forEach(([k, v]) => res.headers.set(k, v));
       return res;
     }

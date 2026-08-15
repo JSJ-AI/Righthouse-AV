@@ -14,7 +14,8 @@
     "secrets:make": "wrangler secret put MAKE_WEBHOOK_URL",
     "secrets:zapier": "wrangler secret put ZAPIER_WEBHOOK_URL",
     "secrets:shared": "wrangler secret put WEBHOOK_SHARED_SECRET",
-    "test": "node test/data.test.js"
+    "secrets:zapier-storage": "wrangler secret put ZAPIER_STORAGE_SECRET",
+    "test": "node --test"
   },
   "devDependencies": {
     "wrangler": "^4.120.1"
