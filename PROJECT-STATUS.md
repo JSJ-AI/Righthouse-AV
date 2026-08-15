@@ -290,3 +290,54 @@ left in on 2026-08-14, plus this Make work on top of it.
    2026-08-14 Zapier dashboard files) and commit/push once everything is
    confirmed working live.
 5. Zapier free-trial expiry reminder still applies (~2026-08-27).
+
+## Session log — 2026-08-15 (separate /zapier and /make pages, Cowork continued)
+
+User's explicit request: "I do want separate pages to monitor as they may
+diverge in future and interesting to see if they stay in sync before
+divergence" — supersedes the single-combined-page decision from earlier the
+same day.
+
+- Refactored `src/dashboard.js`: extracted shared `STYLE`, added `navBar(active)`
+  (Overview / Zapier / Make links, active-state highlighting), `pageShell(...)`
+  (shared HTML document wrapper), and `statsBlock(...)` (shared stat-card
+  renderer, replaces duplicated Zapier/Make section markup). `renderDashboard`
+  (the combined `/` overview) now includes the nav bar and cross-links to the
+  two new single-platform pages. Added new exported `renderPlatformDashboard({...})`
+  for the single-platform pages — shows overall funnel numbers for context,
+  that one platform's path counters, a link to its raw JSON debug endpoint,
+  and a cross-link to the other platform's page and back to Overview.
+- `src/index.js`: added `handleZapierDashboard` / `handleMakeDashboard`, each
+  fetching `counts(env.DB)` + that platform's stats and calling
+  `renderPlatformDashboard`. Wired new routes `/zapier` and `/make` (same
+  `NOINDEX_HEADERS` treatment as every other route).
+- Verified with `npm test` (still 20/20, no new failures) plus a custom
+  inline Node smoke test directly exercising `renderDashboard` and
+  `renderPlatformDashboard` with mock data — asserted nav-bar presence,
+  correct active-state per page, cross-links present, JSON-endpoint link
+  correct, and the not-configured-message fallback path. All assertions
+  passed.
+- Delivered `src/dashboard.js` and `src/index.js` to the user's local
+  machine via the device bridge; re-ran `npm test` there too — 20/20.
+
+**Current state**: `/`, `/zapier`, and `/make` are all written and tested
+locally; not yet deployed or committed to git.
+
+**Next steps**:
+1. `npm run deploy`, then visit `/`, `/zapier`, and `/make` on the live
+   site to confirm all three render correctly and the nav links work.
+2. `git add -A && git commit -m "Add separate /zapier and /make pages" && git push`
+   (covers this plus the still-pending 2026-08-14/08-15 dashboard commits).
+3. Future idea noted, not yet actioned: mount this under `j2analytics.ai`
+   via `BASE_PATH` so it can be linked from the main site as a demo. No
+   changes made for this yet.
+4. **Cost check before leaving the cron running long-term** (see chat):
+   at the current `LEAD_TICK_RATE`/`ORDER_TICK_RATE` and 3-minute cron,
+   ballpark math says this can generate roughly 13k events/month, which
+   would translate to tens of thousands of Make operations and Zapier
+   tasks/month if both webhooks stay wired — likely more than the base
+   Core/Pro (Make) or low task-tier (Zapier) plans include. Worth
+   confirming against each platform's own usage dashboard before assuming
+   a plan tier, and/or dialing back cron frequency or tick rates, or
+   just running `/fire` manually while actively demoing instead of
+   leaving the cron on 24/7.

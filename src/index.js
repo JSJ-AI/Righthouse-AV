@@ -15,7 +15,7 @@ import {
   recentOrders,
   counts,
 } from "./db.js";
-import { renderDashboard } from "./dashboard.js";
+import { renderDashboard, renderPlatformDashboard } from "./dashboard.js";
 import { getZapierStats } from "./zapier-stats.js";
 import { getMakeStats } from "./make-stats.js";
 
@@ -104,6 +104,55 @@ async function handleDashboard(env) {
     cronSchedule: CRON_SCHEDULE,
     zapierStats,
     makeStats,
+  });
+  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
+}
+
+// Single-platform pages, so Zapier and Make can each be watched (or
+// bookmarked) independently -- e.g. to eyeball whether the two automations'
+// counters stay in sync or start to diverge over time.
+async function handleZapierDashboard(env) {
+  const [stats, zapierStats] = await Promise.all([
+    counts(env.DB),
+    getZapierStats(env.ZAPIER_STORAGE_SECRET),
+  ]);
+  const html = renderPlatformDashboard({
+    businessName: env.BUSINESS_NAME || BUSINESS_NAME,
+    platformKey: "zapier",
+    platformLabel: "Zapier",
+    badge: "Storage by Zapier",
+    description:
+      "How many events each Zap path (Business Lead / Consumer Lead / Card Order / Net Order) has actually processed, straight from the Zap's own counters.",
+    stats,
+    platformStats: zapierStats,
+    notConfiguredMsg:
+      'Not configured yet &mdash; set the <code>ZAPIER_STORAGE_SECRET</code> secret (<code>npm run secrets:zapier-storage</code>) to show live counts from the Zap\'s Storage by Zapier counters here.',
+    jsonEndpoint: "/zapier-stats",
+    otherPlatformPath: "/make",
+    otherPlatformLabel: "Make",
+  });
+  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
+}
+
+async function handleMakeDashboard(env) {
+  const [stats, makeStats] = await Promise.all([
+    counts(env.DB),
+    getMakeStats(env.MAKE_API_TOKEN),
+  ]);
+  const html = renderPlatformDashboard({
+    businessName: env.BUSINESS_NAME || BUSINESS_NAME,
+    platformKey: "make",
+    platformLabel: "Make",
+    badge: "Make Data Store",
+    description:
+      "Same four routes (Business Lead / Consumer Lead / Card Order / Net-30 Order), this time from the Make scenario's Router paths and its Data Store counters.",
+    stats,
+    platformStats: makeStats,
+    notConfiguredMsg:
+      'Not configured yet &mdash; set the <code>MAKE_API_TOKEN</code> secret (<code>npm run secrets:make-token</code>) to show live counts from the Make Data Store counters here.',
+    jsonEndpoint: "/make-stats",
+    otherPlatformPath: "/zapier",
+    otherPlatformLabel: "Zapier",
   });
   return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
 }
@@ -199,6 +248,18 @@ export default {
 
     if (pathname === "/recent") {
       const res = await handleRecent(env);
+      Object.entries(NOINDEX_HEADERS).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    if (pathname === "/zapier") {
+      const res = await handleZapierDashboard(env);
+      Object.entries(NOINDEX_HEADERS).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    }
+
+    if (pathname === "/make") {
+      const res = await handleMakeDashboard(env);
       Object.entries(NOINDEX_HEADERS).forEach(([k, v]) => res.headers.set(k, v));
       return res;
     }
