@@ -28,6 +28,55 @@ const STYLE = `
   code { background: #f3f4f6; padding: 1px 6px; border-radius: 4px; }
   .badge { display: inline-block; background: #eef2ff; color: #4338ca; padding: 2px 8px; border-radius: 999px; font-size: 12px; }
   .cross-link { margin-top: 32px; padding-top: 16px; border-top: 1px solid #e5e7eb; }
+
+  /* -- path-counter bar chart: colors are a validated colorblind-safe
+     categorical palette (see dataviz skill), fixed order across every
+     section so the same counter is always the same color. -- */
+  .viz-root {
+    color-scheme: light;
+    --chart-surface:  #fcfcfb;
+    --text-secondary: #52514e;
+    --muted:          #898781;
+    --grid:           #e1e0d9;
+    --baseline:       #c3c2b7;
+    --series-1: #2a78d6; /* blue   -- business leads */
+    --series-2: #eb6834; /* orange -- consumer leads */
+    --series-3: #1baf7a; /* aqua   -- card orders */
+    --series-4: #eda100; /* yellow -- net-30 orders */
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --chart-surface:  #1a1a19;
+      --text-secondary: #c3c2b7;
+      --muted:          #898781;
+      --grid:           #2c2c2a;
+      --baseline:       #383835;
+      --series-1: #3987e5;
+      --series-2: #d95926;
+      --series-3: #199e70;
+      --series-4: #c98500;
+    }
+  }
+  .platform-row { display: flex; gap: 24px; align-items: stretch; margin: 12px 0 20px; flex-wrap: wrap; }
+  .platform-row .counters { flex: 1 1 320px; }
+  .platform-row .chart-card {
+    flex: 1 1 340px;
+    background: var(--chart-surface);
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 14px 18px 10px;
+  }
+  .chart-card h3 { margin: 0 0 10px; font-size: 13px; color: var(--text-secondary); font-weight: 600; }
+  .bar-chart { display: flex; flex-direction: column; gap: 10px; }
+  .bar-row { display: grid; grid-template-columns: 108px 1fr 40px; align-items: center; gap: 10px; }
+  .bar-row .bar-label { font-size: 12px; color: var(--text-secondary); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar-track { position: relative; height: 20px; border-bottom: 1px solid var(--baseline); }
+  .bar-fill { position: absolute; left: 0; bottom: 0; height: 14px; border-radius: 4px 4px 0 0; }
+  .bar-row .bar-value { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--grid); }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-secondary); }
+  .legend-swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
 `;
 
 function navBar(active) {
@@ -69,6 +118,52 @@ function statsBlock(stats, notConfiguredMsg) {
         `<div class="stat"><div class="n">${esc(s.value)}</div><div class="l">${esc(s.label)}</div></div>`
     )
     .join("")}</div>`;
+}
+
+// Fixed key -> chart-color-slot mapping, independent of array order, so the
+// same counter is always the same color on every page (overview, /zapier,
+// /make) -- "color follows the entity, never its rank/order".
+const CHART_KEY_TO_SERIES = {
+  business_leads_count: "--series-1",
+  consumer_leads_count: "--series-2",
+  card_orders_count: "--series-3",
+  net30_orders_count: "--series-4",
+};
+
+// Right-side bar-chart card: same counters as statsBlock, shown as
+// horizontal bars so the four numbers can be compared at a glance instead
+// of read one by one. Bars are scaled relative to the largest of the four
+// (not a fixed axis) since these are small demo counts, not a metric with a
+// meaningful absolute ceiling.
+function chartCard(stats, notConfiguredMsg) {
+  if (!stats) {
+    return `<div class="chart-card"><h3>Path counters, at a glance</h3><p class="sub" style="margin:0;">${notConfiguredMsg}</p></div>`;
+  }
+  const maxValue = Math.max(0, ...stats.map((s) => Number(s.value) || 0));
+  const bars = stats
+    .map((s) => {
+      const value = Number(s.value) || 0;
+      const seriesVar = CHART_KEY_TO_SERIES[s.key] || "--muted";
+      let pct = maxValue > 0 ? (value / maxValue) * 100 : 0;
+      if (value > 0 && pct < 4) pct = 4; // keep a visible sliver for small-but-nonzero counts
+      return `<div class="bar-row">
+        <div class="bar-label">${esc(s.label)}</div>
+        <div class="bar-track"><div class="bar-fill" style="width: ${pct}%; background: var(${seriesVar});"></div></div>
+        <div class="bar-value">${esc(s.value)}</div>
+      </div>`;
+    })
+    .join("");
+  const legend = stats
+    .map((s) => {
+      const seriesVar = CHART_KEY_TO_SERIES[s.key] || "--muted";
+      return `<div class="legend-item"><span class="legend-swatch" style="background: var(${seriesVar});"></span>${esc(s.label)}</div>`;
+    })
+    .join("");
+  return `<div class="chart-card">
+    <h3>Path counters, at a glance</h3>
+    <div class="bar-chart">${bars}</div>
+    <div class="legend">${legend}</div>
+  </div>`;
 }
 
 const ZAPIER_NOT_CONFIGURED =
@@ -125,11 +220,17 @@ export function renderDashboard({
 
   <h2>Zapier path counters <span class="badge">Storage by Zapier</span></h2>
   <p class="sub">How many events each Zap path (Business Lead / Consumer Lead / Card Order / Net Order) has actually processed, straight from the Zap's own counters. <a href="/zapier">View Zapier-only page &rarr;</a></p>
-  ${statsBlock(zapierStats, ZAPIER_NOT_CONFIGURED)}
+  <div class="platform-row viz-root">
+    <div class="counters">${statsBlock(zapierStats, ZAPIER_NOT_CONFIGURED)}</div>
+    ${chartCard(zapierStats, ZAPIER_NOT_CONFIGURED)}
+  </div>
 
   <h2>Make path counters <span class="badge">Make Data Store</span></h2>
   <p class="sub">Same four routes (Business Lead / Consumer Lead / Card Order / Net-30 Order), this time from the Make scenario's Router paths and its Data Store counters. <a href="/make">View Make-only page &rarr;</a></p>
-  ${statsBlock(makeStats, MAKE_NOT_CONFIGURED)}
+  <div class="platform-row viz-root">
+    <div class="counters">${statsBlock(makeStats, MAKE_NOT_CONFIGURED)}</div>
+    ${chartCard(makeStats, MAKE_NOT_CONFIGURED)}
+  </div>
 
   <h2>Recent leads</h2>
   <table>
@@ -176,7 +277,10 @@ export function renderPlatformDashboard({
 
   <h2>${esc(platformLabel)} path counters <span class="badge">${esc(badge)}</span></h2>
   <p class="sub">${description}</p>
-  ${statsBlock(platformStats, notConfiguredMsg)}
+  <div class="platform-row viz-root">
+    <div class="counters">${statsBlock(platformStats, notConfiguredMsg)}</div>
+    ${chartCard(platformStats, notConfiguredMsg)}
+  </div>
 
   <p class="sub">Raw numbers as JSON: <a href="${jsonEndpoint}"><code>${jsonEndpoint}</code></a></p>
 
