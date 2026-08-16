@@ -341,3 +341,47 @@ locally; not yet deployed or committed to git.
    a plan tier, and/or dialing back cron frequency or tick rates, or
    just running `/fire` manually while actively demoing instead of
    leaving the cron on 24/7.
+
+## Session log — 2026-08-16 (deploy + pause for live verification, Cowork)
+
+- Confirmed `git push` of the 2026-08-15 `/zapier` + `/make` work succeeded
+  on the user's machine (`9542f06` on `master`, working tree clean,
+  matches this sandbox's local `020fd87` commit content).
+- User ran `npm run deploy` (Wrangler 4.120.1) — **succeeded**: both
+  bindings intact (`env.DB` / D1, `env.BUSINESS_NAME`), cron trigger
+  confirmed at `*/3 * * * *`, new Version ID `d43a7f99-a0d7-4310-afcc-1cc4184bbdec`.
+  Wrangler's printed URL is the default `*.workers.dev` one, which is
+  normal/expected even though the real access point is the Custom Domain
+  `rh-j2j3p.j2analytics.ai`.
+- **Live verification is NOT yet done.** Tried to check
+  `https://rh-j2j3p.j2analytics.ai/{, zapier, make, make-stats}` from this
+  Cowork session and could not: the cloud sandbox's own network proxy
+  doesn't have `j2analytics.ai` allow-listed (same restriction hit earlier
+  with `us2.make.com`), and `WebFetch` was correctly blocked by the site's
+  own `robots.txt` (`ROBOTS_DISALLOWED`) — expected, since that's the
+  noindex/unlisted protection working as designed; it blocks compliant
+  fetch tools same as it blocks crawlers. **User needs to check these 4
+  URLs directly in a browser tomorrow:**
+  1. `/` — Overview page, nav bar (Overview/Zapier/Make), both stat sections.
+  2. `/zapier` — Zapier-only page.
+  3. `/make` — Make-only page.
+  4. `/make-stats` — raw JSON, should show `"configured": true` and
+     real non-zero counts for all 4 keys. **This is the important one** —
+     it's the one piece whose response shape was sourced from Make's docs,
+     not hand-verified live (see 2026-08-15 log). If it comes back wrong
+     or all-zero, fix the parsing in `src/make-stats.js` first.
+- Also answered (not logged in code, just chat): rough monthly Make-ops /
+  Zapier-tasks cost estimate if the cron is left running 24/7 (see item 4
+  above), and confirmed browser use on the user's own machine doesn't
+  conflict with anything Claude is doing (no concurrent Make.com browser
+  automation in flight).
+
+**Next steps for tomorrow:**
+1. Check the 4 URLs above directly in a browser; report back what each
+   shows (especially `/make-stats`'s numbers).
+2. If `/make-stats` is wrong, fix `src/make-stats.js` parsing to match
+   the real shape, redeploy, recheck.
+3. If all 4 look right, this phase is fully done — no further action
+   needed except keeping an eye on the Zapier free-trial expiry
+   (~2026-08-27) and, if leaving the cron on long-term, sorting out
+   Make/Zapier plan tiers per the cost estimate above.
