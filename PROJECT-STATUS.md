@@ -385,3 +385,50 @@ locally; not yet deployed or committed to git.
    needed except keeping an eye on the Zapier free-trial expiry
    (~2026-08-27) and, if leaving the cron on long-term, sorting out
    Make/Zapier plan tiers per the cost estimate above.
+
+## Session log — 2026-08-16 continued (git repo hygiene cleanup)
+
+Noticed via `git fetch` + `git diff HEAD origin/master --stat` in the
+Cowork sandbox that GitHub's `master` had picked up some files that
+shouldn't be tracked — `Righthouse-AV-backup-20260815.zip` (~224 KB), two
+stray `.patch` files (`zapier-dashboard-counters.patch`,
+`zapier-stats-fix.patch`), and the `_to_delete/` folder from the earlier
+git-lock cleanup — almost certainly swept in by an earlier `git add -A`.
+Confirmed the *real* code content (src/, PROJECT-STATUS.md, etc.) matched
+byte-for-byte between the sandbox and origin, so this was purely a
+tracked-junk issue, not a content divergence.
+
+- Reset the sandbox's own local git copy to `origin/master` (`git reset
+  --hard`) to clear a persistent false-positive "unpushed commits" nag
+  from the stop-hook — the sandbox can never push (no credentials for
+  this repo), so its local commits will always look "unpushed" to that
+  hook even when the content already matches GitHub. This is expected
+  sandbox behavior, not a real problem, each session.
+- Walked the user through adding a `.gitignore` (`*.zip`, `*.patch`,
+  `_to_delete/`) and running `git rm -r --cached` on the four
+  already-tracked offenders to untrack them without deleting the local
+  files.
+- **Not yet confirmed**: whether the `git rm -r --cached` step actually
+  found and staged those files on the user's machine — their first
+  attempt showed "nothing to commit" immediately, which could mean either
+  (a) the files were already untracked somehow, or (b) the rm command
+  didn't match (wrong directory, typo, etc.). Asked the user to paste the
+  literal output of `git rm -r --cached ...` and of
+  `git ls-files | Select-String "\.zip$|\.patch$|_to_delete"` to confirm
+  which case it is — **not yet resolved as of this save**.
+
+**Next step**: get that `git rm --cached` / `git ls-files` output from the
+user and confirm the four junk paths are actually untracked on GitHub
+(check via `git ls-files` after a fresh `git pull`, or just look at the
+GitHub repo file listing directly).
+
+**Skills check (2026-08-16)**: user asked whether any Cowork skills would
+help with coding or reading web pages for this project. Searched the
+skill catalog — nothing coding-specific surfaced (no dedicated "write
+JavaScript" or "review a Cloudflare Worker" skill exists in the catalog
+as of this session). For this project specifically: general coding work
+(editing `src/*.js`, running `npm test`, etc.) doesn't need a skill —
+Claude's built-in file/shell tools cover it directly. For reading live
+web pages, the `claude-in-chrome` browser-automation tools are already
+what's being used (e.g. the Make.com scenario debugging on 2026-08-15).
+Nothing new to add on this front right now.
