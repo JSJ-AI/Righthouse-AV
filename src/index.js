@@ -19,7 +19,7 @@ import { renderDashboard, renderPlatformDashboard } from "./dashboard.js";
 import { getZapierStats } from "./zapier-stats.js";
 import { getMakeStats } from "./make-stats.js";
 
-const CRON_SCHEDULE = "*/3 * * * *"; // keep in sync with wrangler.jsonc, dashboard display only
+const CRON_SCHEDULE = "*/15 * * * *"; // keep in sync with wrangler.jsonc, dashboard display only
 
 async function dispatchWebhooks(env, evt) {
   const targets = [env.MAKE_WEBHOOK_URL, env.ZAPIER_WEBHOOK_URL].filter(Boolean);

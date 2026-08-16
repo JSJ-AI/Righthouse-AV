@@ -42,7 +42,7 @@ to an invoicing flow, route consumer/card orders straight to fulfillment).
 
 ## What it generates
 
-Every cron tick (default: every 3 minutes), the Worker randomly decides
+Every cron tick (default: every 15 minutes), the Worker randomly decides
 whether to:
 
 - emit a **new lead** (`lead.created`) -- a consumer or business contact

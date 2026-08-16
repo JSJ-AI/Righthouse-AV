@@ -5,9 +5,12 @@
   "compatibility_date": "2024-09-23",
 
   // Fires the generator on a schedule, forever, independent of any browser
-  // tab or session. */3 * * * * = every 3 minutes. Change freely.
+  // tab or session. */15 * * * * = every 15 minutes -- picked 2026-08-16 to
+  // keep monthly Make operations (~7.8k est.) comfortably under the
+  // Core/Pro/Teams base 10,000-op package; see PROJECT-STATUS.md. Change
+  // freely, just re-check that math if you speed it back up.
   "triggers": {
-    "crons": ["*/3 * * * *"]
+    "crons": ["*/15 * * * *"]
   },
 
   // Internal state store: tracks which leads have already "converted" to an
